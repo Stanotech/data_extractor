@@ -1,2 +1,54 @@
-/Dockerfile
-/requirements.txt
+# Django/Python ignores
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+job_scraper/__pycache__/
+*.sqlite3
+db.sqlite3
+*.log
+*.pot
+*.mo
+*.swp
+.DS_Store
+*.bak
+*.~*
+.env
+*.pid
+
+# Django migrations (if you want to ignore them)
+*/migrations/*.py
+!*/migrations/__init__.py
+
+# Virtual environments
+venv/
+env/
+
+# Cache & temp files
+cache/
+staticfiles/
+static/
+media/
+*.tmp
+
+# Docker-related ignores
+*.db
+*.tar
+*.log
+*.pid
+*.sock
+.dockerignore
+
+# IDE/editor files
+.vscode/
+.idea/
+*.iml
+
+# Compiled files
+*.egg-info/
+dist/
+build/
+.qodo
+
+# Chrome-User-Data
+user_data/
