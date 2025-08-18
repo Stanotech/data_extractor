@@ -1,5 +1,5 @@
 import streamlit as st
-from extractor import extract_pdf_data
+from extractor import PDFExtractor
 from database import init_db, save_data
 
 init_db()
@@ -12,7 +12,8 @@ if uploaded_file is not None:
     with open("temp.pdf", "wb") as f:
         f.write(uploaded_file.read())
 
-    data = extract_pdf_data("temp.pdf")
+    extractor = PDFExtractor("temp.pdf")
+    data = extractor.extract()
     save_data(data)
 
     st.subheader("Extracted Data")

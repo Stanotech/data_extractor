@@ -1,6 +1,10 @@
 import fitz
 import re
+import logging
 from config import DATA_ELEMENTS
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 input_mapping = {
     "customer_name": ["surname", "forname", "firstnames", "clientname", "customername", "name", "accountname", "firstnamess"],
@@ -8,153 +12,125 @@ input_mapping = {
     "account_number": ["accountnumber", "mainaccountnumber", "idnumbers"] 
 }
 
-def split_span(span):
-    """
-    If a span contains '........' or '____', it is split into smaller spans.
-    Returns a list of artificial spans with correct bounding boxes (bboxes).
-    Separators (dots or underscores) are not included in the final result.
-    """
+class PDFExtractor:
+    def __init__(self, pdf_path):
+        self.pdf_path = pdf_path
+        self.doc = fitz.open(pdf_path)
+        self.extracted_data = {key: None for key in DATA_ELEMENTS}
+        self.active_mapping = {k: v[:] for k, v in input_mapping.items()}
+        self.labels = []
+        self.label_fonts = []
+        self.rest_spans = []
 
-    text = span["text"]
-    font = span["font"]
-    size = span["size"]
-    x0, y0, x1, y1 = span["bbox"]
-    page = span["page"]
+    def _split_span(self, span):
+        text = span["text"]
+        font = span["font"]
+        size = span["size"]
+        x0, y0, x1, y1 = span["bbox"]
+        page = span["page"]
 
-    # split by separators (3 or more)
-    parts = re.split(r'(\.{3,}|_{3,})', text)
+        parts = re.split(r'(\.{3,}|_{3,})', text)
+        clean_parts = [p for p in parts if p]
 
-    clean_parts = [p for p in parts if p]
+        def char_length(c):
+            return 1 if c in {".", " ", "i", "j"} else 2
 
-    def char_length(c):
-        if c in {".", " ", "i", "j"}:
-            return 1
-        else:
-            return 2
+        units = [sum(char_length(c) for c in p) for p in clean_parts]
+        total_units = sum(units)
+        total_width = x1 - x0
+        unit = total_width / total_units
 
-    units = [sum(char_length(c) for c in p) for p in clean_parts]
+        spans_out = []
+        cursor = x0
 
-    total_units = sum(units)
-    total_width = x1 - x0
-    unit = total_width / total_units
+        for p, w in zip(clean_parts, units):
+            width = w * unit
+            if not re.fullmatch(r'(\.{3,}|_{3,})', p):
+                spans_out.append({
+                    "text": p,
+                    "font": font,
+                    "size": size,
+                    "bbox": (cursor, y0, cursor + width, y1),
+                    "page": page,
+                })
+            cursor += width
 
-    spans_out = []
-    cursor = x0
+        return spans_out
 
-    for p, w in zip(clean_parts, units):
-        width = w * unit
-        # if not separator- then add
-        if not re.fullmatch(r'(\.{3,}|_{3,})', p):
-            spans_out.append({
-                "text": p,
-                "font": font,
-                "size": size,
-                "bbox": (cursor, y0, cursor + width, y1),
-                "page": page,
-            }) 
-        cursor += width
+    def _collect_blocks(self):
+        for page_num, page in enumerate(self.doc, start=1):
+            blocks = page.get_text("dict")["blocks"]
+            for b in blocks:
+                if b["type"] != 0:
+                    continue
+                block_has_label = False
+                block_spans = []
 
-    return spans_out
+                for line in b["lines"]:
+                    for span in line["spans"]:
+                        if not span["text"]:
+                            continue
+                        span_data = {
+                            "text": span["text"],
+                            "font": span["font"],
+                            "size": span["size"],
+                            "bbox": span["bbox"],
+                            "page": page_num,
+                        }
+                        for subspan in self._split_span(span_data):
+                            block_spans.append(subspan)
+                            for key, aliases in list(self.active_mapping.items()):
+                                for alias in aliases:
+                                    if alias.lower() == "".join(ch for ch in subspan["text"].lower() if ch.isalnum()):
+                                        subspan["label_for"] = key
+                                        self.labels.append(subspan)
+                                        self.label_fonts.append(span["font"])
+                                        block_has_label = True
+                                        logger.info(f"Added label: {key} -> '{subspan['text']}'")
+                                        self.active_mapping.pop(key, None)
+                                        break
+                                else:
+                                    continue
+                                break
+                if not block_has_label:
+                    self.rest_spans.extend(block_spans)
 
-
-def extract_pdf_data(pdf_path):
-    doc = fitz.open(pdf_path)
-
-    extracted_data = {key: None for key in DATA_ELEMENTS}
-    active_mapping = {k: v[:] for k, v in input_mapping.items()}
-
-    labels = []
-    label_fonts = []    
-    rest_spans = []
-
-    # --- 1. Collecting blocks ---
-    for page_num, page in enumerate(doc, start=1):
-        blocks = page.get_text("dict")["blocks"]
-
-        for b in blocks:
-            if b["type"] != 0:
-                continue 
-
-            block_has_label = False
-            block_spans = []
-
-            for line in b["lines"]:
-                for span in line["spans"]:
-                    text = span["text"]
-                    font = span["font"]
-                    size = span["size"]
-                    x0, y0, x1, y1 = span["bbox"]
-
-                    if not text:
-                        continue 
-
-                    span_data = {
-                        "text": text,
-                        "font": font,
-                        "size": size, 
-                        "bbox": (x0, y0, x1, y1),
-                        "page": page_num,
-                    } 
- 
-                    for subspan in split_span(span_data):
-                        block_spans.append(subspan)
-
-                        for key, aliases in list(active_mapping.items()):
-                            for alias in aliases:
-                                if alias.lower() == "".join(ch for ch in subspan["text"].lower() if ch.isalnum()):
-                                    subspan["label_for"] = key
-                                    labels.append(subspan)
-                                    label_fonts.append(font) 
-                                    block_has_label = True
-                                    print(f"added label: {key} -> '{subspan['text']}'") 
- 
-                                    active_mapping.pop(key, None)
-                                    break
-                            else:
-                                continue
-                            break
-
-            if not block_has_label:
-                rest_spans.extend(block_spans)
-
-    # --- 2. searching values for labels ---
-    for label in labels:
+    def _find_nearest_value(self, label):
         lx0, ly0, lx1, ly1 = label["bbox"]
+        label_height = ly1 - ly0
+        label_center_y = (ly0 + ly1) / 2
+        y_min = label_center_y - 0.6 * label_height
+        y_max = label_center_y + 0.6 * label_height
 
-        # nearest euclides distance
         def distance(s):
             sx0, sy0, sx1, sy1 = s["bbox"]
             label_center = (lx0, (ly0 + ly1) / 2)
             span_center = (sx0, (sy0 + sy1) / 2)
             return ((label_center[0] - span_center[0]) ** 2 + (label_center[1] - span_center[1]) ** 2) ** 0.5
 
-        label_height = ly1 - ly0
-        label_center_y = (ly0 + ly1) / 2
-        y_min = label_center_y - 0.6*label_height
-        y_max = label_center_y + 0.6*label_height
-
         candidates = [
-            s for s in rest_spans
+            s for s in self.rest_spans
             if s["font"] != label["font"]
             and s["page"] == label["page"]
             and y_min <= (s["bbox"][1] + s["bbox"][3]) / 2 <= y_max
         ]
 
-        print(f"\n[LABEL] {label['label_for']} | text='{label['text']}' | font='{label['font']}' | page={label['page']} | bbox={label['bbox']}")
+        logger.info(f"[LABEL] {label['label_for']} | text='{label['text']}' | font='{label['font']}' | page={label['page']} | bbox={label['bbox']}")
 
         if not candidates:
-            print(f"[WARN] No candidates for label: {label['label_for']}")
-            continue
+            logger.warning(f"No candidates found for label: {label['label_for']}")
+            return
 
-        scored = [(distance(s), s) for s in candidates]
-        scored.sort(key=lambda t: t[0])
-
+        scored = sorted([(distance(s), s) for s in candidates], key=lambda t: t[0])
         for d, can in scored:
-            print(f"  -> candidate: '{can['text']}' | dist={d:.2f} | font='{can['font']}' | bbox={can['bbox']}")
-
+            logger.info(f"  -> candidate: '{can['text']}' | dist={d:.2f} | font='{can['font']}' | bbox={can['bbox']}")
         nearest_dist, nearest = scored[0]
-        print(f"[MATCH] {label['label_for']} -> '{nearest['text']}' (dist={nearest_dist:.2f})")
+        logger.info(f"[MATCH] {label['label_for']} -> '{nearest['text']}' (dist={nearest_dist:.2f})")
+        self.extracted_data[label["label_for"]] = nearest["text"]
 
-        extracted_data[label["label_for"]] = nearest["text"]
-
-    return extracted_data
+    def extract(self):
+        self._collect_blocks()
+        for label in self.labels:
+            self._find_nearest_value(label)
+        logger.info(f"Final extracted data: {self.extracted_data}")
+        return self.extracted_data
