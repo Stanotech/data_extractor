@@ -11,7 +11,7 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             customer_name TEXT,
             branch_name TEXT,
-            claim_type TEXT
+            account_number TEXT
         )
     """)
     conn.commit()
@@ -23,7 +23,7 @@ def save_data(data: dict) -> None:
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO pdf_data (customer_name, branch_name, claim_type)
+        INSERT INTO pdf_data (customer_name, branch_name, account_number)
         VALUES (?, ?, ?)
     """,
         (data["customer_name"], data["branch_name"], data["account_number"]),
