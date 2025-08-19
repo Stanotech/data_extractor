@@ -1,3 +1,5 @@
 streamlit
 pytest
 PyMuPDF>=1.22.5
+isort
+ruff

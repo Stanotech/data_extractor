@@ -99,7 +99,7 @@ test_cases = [
 
 
 @pytest.mark.parametrize("filename, expected", test_cases)
-def test_pdf_extractor_integration(filename, expected):
+def test_pdf_extractor_integration(filename: str, expected: dict) -> None:
     pdf_path = os.path.join(DOCS_DIR, filename)
     extractor = PDFExtractor(pdf_path)
     result = extractor.extract()

@@ -1,6 +1,7 @@
 import streamlit as st
-from extractor import PDFExtractor
 from database import init_db, save_data
+
+from pdf_extractor.extractor import PDFExtractor
 
 init_db()
 

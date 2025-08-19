@@ -9,4 +9,6 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 EXPOSE 8501
 
-CMD ["streamlit", "run", "pdf_extractor/app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.runOnSave=true"]
+CMD ["python", "-m", "streamlit", "run", "pdf_extractor/app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.runOnSave=true"]
+
+
