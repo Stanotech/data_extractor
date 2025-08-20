@@ -1,6 +1,7 @@
 import sqlite3
 import logging
 from typing import Dict, Any
+from pdf_extractor.config import INPUT_MAPPING
 
 DB_NAME = "data.db"
 
@@ -9,44 +10,48 @@ logger = logging.getLogger(__name__)
 
 
 def init_db() -> None:
+    """Initializes the database."""
     try:
         with sqlite3.connect(DB_NAME) as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS pdf_data (
+
+            fields = []
+            for key in INPUT_MAPPING.keys():
+                fields.append(f"{key} TEXT")
+
+            create_table_sql = f"""
+                CREATE TABLE pdf_data (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    customer_name TEXT,
-                    branch_name TEXT,
-                    account_number TEXT
+                    {", ".join(fields)}
                 )
-            """)
+            """
+
+            cursor.execute(create_table_sql)
             conn.commit()
-            logger.info("Baza danych została zainicjalizowana.")
-    except sqlite3.Error as e:
-        logger.error(f"Błąd podczas inicjalizacji bazy danych: {e}")
+            logger.info("Database initialized successfully.")
+
+    except (sqlite3.Error, OSError) as e:
+        logger.error(f"Error initializing database: {e}")
         raise
 
 
 def save_data(data: Dict[str, Any]) -> None:
+    """Saves data to the database."""
     try:
         with sqlite3.connect(DB_NAME) as conn:
             cursor = conn.cursor()
+
+            columns = ", ".join(data.keys())
+            placeholders = ", ".join(["?"] * len(data))
+            values = list(data.values())
+
             cursor.execute(
-                """
-                INSERT INTO pdf_data (customer_name, branch_name, account_number)
-                VALUES (?, ?, ?)
-                """,
-                (
-                    data.get("customer_name"),
-                    data.get("branch_name"),
-                    data.get("account_number"),
-                ),
+                f"INSERT INTO pdf_data ({columns}) VALUES ({placeholders})", values
             )
+
             conn.commit()
-            logger.info("Dane zostały zapisane do bazy.")
+            logger.info(f"Data saved: {data}")
+
     except sqlite3.Error as e:
-        logger.error(f"Błąd podczas zapisu do bazy: {e}")
-        raise
-    except KeyError as e:
-        logger.error(f"Brak wymaganej wartości w danych wejściowych: {e}")
+        logger.error(f"Error saving data: {e}")
         raise
