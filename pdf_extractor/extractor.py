@@ -1,33 +1,18 @@
 import logging
 import re
 import fitz
-from pdf_extractor.config import DATA_ELEMENTS
+from pdf_extractor.config import INPUT_MAPPING
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-input_mapping = {
-    "customer_name": [
-        "surname",
-        "forname",
-        "firstnames",
-        "clientname",
-        "customername",
-        "name",
-        "accountname",
-        "firstnamess",
-    ],
-    "branch_name": ["branch", "customercentre", "branchname", "tocustomercentre"],
-    "account_number": ["accountnumber", "mainaccountnumber", "idnumbers"],
-}
 
 
 class PDFExtractor:
     def __init__(self, pdf_path: str) -> None:
         self.pdf_path = pdf_path
         self.doc = None
-        self.extracted_data = {key: None for key in DATA_ELEMENTS}
-        self.active_mapping = {k: v[:] for k, v in input_mapping.items()}
+        self.extracted_data = {key: None for key in INPUT_MAPPING}
+        self.active_mapping = {k: v[:] for k, v in INPUT_MAPPING.items()}
         self.labels = []
         self.label_fonts = []
         self.rest_spans = []
@@ -50,7 +35,7 @@ class PDFExtractor:
             return self.extracted_data
         except Exception as e:
             logger.error(f"Błąd podczas ekstrakcji: {e}")
-            return {key: None for key in DATA_ELEMENTS}
+            return {key: None for key in INPUT_MAPPING}
 
     def _collect_blocks(self) -> None:
         if not self.doc:
@@ -111,15 +96,6 @@ class PDFExtractor:
             y_min = label_center_y - 0.6 * label_height
             y_max = label_center_y + 0.6 * label_height
 
-            def distance(s: dict) -> float:
-                sx0, sy0, sx1, sy1 = s["bbox"]
-                label_center = (lx0, (ly0 + ly1) / 2)
-                span_center = (sx0, (sy0 + sy1) / 2)
-                return (
-                    (label_center[0] - span_center[0]) ** 2
-                    + (label_center[1] - span_center[1]) ** 2
-                ) ** 0.5
-
             candidates = [
                 s
                 for s in self.rest_spans
@@ -139,7 +115,10 @@ class PDFExtractor:
                 )
                 return
 
-            scored = sorted([(distance(s), s) for s in candidates], key=lambda t: t[0])
+            scored = sorted(
+                [(self._distance(label, span), span) for span in candidates],
+                key=lambda t: t[0]
+            )
             nearest_dist, nearest = scored[0]
             logger.info(
                 f"[MATCH] {label.get('label_for')} -> '{nearest['text']}' (dist={nearest_dist:.2f})"
@@ -193,3 +172,13 @@ class PDFExtractor:
         except Exception as e:
             logger.error(f"Błąd w _split_span: {e}")
             return []
+
+    @staticmethod
+    def _distance(label: dict, span: dict) -> float:
+        """Pomocnicza metoda obliczająca odległość euklidesową między etykietą a spanem."""
+        lx0, ly0, lx1, ly1 = label["bbox"]
+        sx0, sy0, sx1, sy1 = span["bbox"]
+        label_center = (lx0, (ly0 + ly1) / 2)
+        span_center = (sx0, (sy0 + sy1) / 2)
+        return ((label_center[0] - span_center[0]) ** 2 +
+                (label_center[1] - span_center[1]) ** 2) ** 0.5
