@@ -9,6 +9,15 @@ INPUT_MAPPING = {
         "accountname",
         "firstnamess",
     ],
-    "branch_name": ["branch", "customercentre", "branchname", "tocustomercentre"],
-    "account_number": ["accountnumber", "mainaccountnumber", "idnumbers"],
+    "branch_name": [
+        "branch",
+        "customercentre",
+        "branchname",
+        "tocustomercentre"
+    ],
+    "account_number": [
+        "accountnumber",
+        "mainaccountnumber",
+        "idnumbers"
+    ],
 }
